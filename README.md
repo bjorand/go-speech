@@ -1,6 +1,6 @@
 # go-speech
 
-go-speech is proof of concept I'm writing to play with neural networks and digital signal processing.
+go-speech is a proof of concept I'm writing to play with neural networks and digital signal processing.
 Current goal is to do simple speech recognition for words like "yes" or "no".
 
 Working parts are:
@@ -8,8 +8,6 @@ Working parts are:
  - detect words in Wav file
  - split words in 20ms samples
  - train network with Fast Fourrier transform data
-
-
 
 ## Usage
 
@@ -27,7 +25,6 @@ Install dependencies:
 ```
 dep ensure -v
 ```
-
 
 Record a Wav file where your repeat the same word "hello" many times separated by short silences:
 ```
@@ -51,6 +48,7 @@ Train neural network and save results:
 ```
 go run cmd/train/train.go -word hello -in hellos.wav -test hello-test.wav -wrong crazy.wav
 ```
+
 ## TODO
 
 - cmd/recorder: start recording when a word is detected.
