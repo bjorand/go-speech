@@ -3,13 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
-	"math/cmplx"
-	"os"
-	"reflect"
+	"io"
+	"math/rand"
+	"time"
 
+	"github.com/bjorand/go-speech/drivers/audio"
 	"github.com/bjorand/go-speech/speechrec"
-	"github.com/mjibson/go-dsp/fft"
-	dspwav "github.com/mjibson/go-dsp/wav"
+	"gonum.org/v1/plot"
+	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/plotutil"
+	"gonum.org/v1/plot/vg"
 )
 
 var (
@@ -22,21 +25,17 @@ var (
 	window                = 20   // ms
 )
 
-func parse(t interface{}) []float64 {
-	switch reflect.TypeOf(t).Kind() {
-	case reflect.Slice:
-		s := reflect.ValueOf(t)
-		r := make([]float64, s.Len())
-		for i := 0; i < s.Len(); i++ {
-			r[i] = float64(s.Index(i).Int())
-		}
-		return r
-	default:
-		panic("unknown interface type")
+func xys(v []float64) plotter.XYs {
+	pts := make(plotter.XYs, len(v))
+	for i := range pts {
+		pts[i].X = float64(i)
+		pts[i].Y = v[i]
 	}
+	return pts
 }
 
 func main() {
+	var testFileScore, wrongFileScore []float64
 	flag.Parse()
 	if *word == "" {
 		fmt.Println("-word undefined")
@@ -47,265 +46,108 @@ func main() {
 		return
 	}
 
-	// lock := sync.Mutex{}
 	brain := speechrec.NewBrain(*word)
 	brain.Run()
-	// defer brain.Stop()
-	// time.Sleep(10 * time.Second)
 
-	f, err := os.Open(*inFile)
-	if err != nil {
-		panic(fmt.Sprintf("couldn't open audio file - %v", err))
+	if *testFile != "" {
+		go func() {
+			ticker := time.NewTicker(3 * time.Second).C
+			for {
+				select {
+				case <-ticker:
+					stream, err := audio.NewWavFileReader(*testFile)
+					if err != nil {
+						panic(err)
+					}
+					for {
+						wordSamples, err := stream.WordSamples(avgAmplitudeThreshold)
+						if err == io.EOF {
+							break
+						}
+						if err != nil {
+							panic(err)
+						}
+						for _, wordSample := range wordSamples {
+							p := brain.M.Predict([][]float64{wordSample})
+							testFileScore = append(testFileScore, p.RawMatrix().Data[0])
+
+						}
+					}
+				}
+			}
+		}()
 	}
-	defer f.Close()
+	if *wrongTestFile != "" {
+		go func() {
+			ticker := time.NewTicker(3 * time.Second).C
+			for {
+				select {
+				case <-ticker:
+					stream, err := audio.NewWavFileReader(*wrongTestFile)
+					if err != nil {
+						panic(err)
+					}
+					for {
+						wordSamples, err := stream.WordSamples(avgAmplitudeThreshold)
+						if err == io.EOF {
+							break
+						}
+						if err != nil {
+							panic(err)
+						}
+						for _, wordSample := range wordSamples {
+							p := brain.M.Predict([][]float64{wordSample})
+							wrongFileScore = append(wrongFileScore, p.RawMatrix().Data[0])
 
-	w, err := dspwav.New(f)
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	stream, err := audio.NewWavFileReader(*inFile)
 	if err != nil {
 		panic(err)
 	}
-	sampleRate := int(w.SampleRate)
-	// go func() {
-	var isWord bool
-	// var train [][]float64
-	// var previousSamples []wav.Sample
-	// var samples []wav.Sample
-	iSample := 1
+	defer stream.Close()
 	for {
-		samples, err := w.ReadSamples(sampleRate / 1000 * window)
-		if err != nil {
+		wordSamples, errW := stream.WordSamples(avgAmplitudeThreshold)
+		if errW == io.EOF {
 			break
 		}
-		// if len(previousSamples) > 0 {
-		// 	copy(samples, previousSamples[800:])
-		// 	samples = append(samples, samplesR...)
-		// } else {
-		// 	copy(samples, samplesR)
-		// }
-
-		// copy(previousSamples, samples)
-		// numSamples = numSamples + len(samples)
-		s := parse(samples)
-		// s := make([]float64, len(samples))
-		// for i, sample := range samples {
-		// 	s[i] = float64(sample.Values[0])
-		//
-		// }
-
-		f := fft.FFTReal(s)
-		if len(f) < 1024 {
-			for i := len(f); i < 1024; i++ {
-				var c complex128
-				f = append(f, c)
-			}
+		if errW != nil {
+			panic(err)
 		}
-		// ensure we have at least 1000 items in fftr
-
-		// lowPassFilter := 21
-		// hiPassFilter := 20000
-		// for i, c := range f {
-		// 	if int(math.Abs(real(c))) < lowPassFilter {
-		// 		f[i] = 0
-		// 	}
-		// 	if int(math.Abs(real(c))) > hiPassFilter {
-		// 		f[i] = 0
-		// 	}
-		// }
-		abs := make([]float64, len(f))
-		reals := make([]float64, len(f))
-		for i, x := range f {
-			abs[i] = cmplx.Abs(x)
-			reals[i] = real(x)
-		}
-		var avg float64
-		var sum float64
-		for _, x := range abs {
-			sum = sum + x
-		}
-		avg = sum / float64(len(abs))
-		if avg > avgAmplitudeThreshold {
-			if !isWord {
-				isWord = true
-				fmt.Println("word")
-			}
-		} else {
-			if isWord {
-				fmt.Println("end word")
-				isWord = false
-			}
-		}
-		if isWord {
-			iSample++
-			brain.Learn <- reals
-
+		fmt.Printf("Got word with %d sample to learn\n", len(wordSamples))
+		for _, wordSample := range wordSamples {
+			brain.Learn <- wordSample
 		}
 	}
-	fmt.Println("saving")
+	fmt.Println("Saving training results...")
 	brain.Stop()
 	brain.Save()
-	fmt.Println("saved")
-	// time.Sleep(2 * time.Second)
-	// }()
+	fmt.Println("Training results saved.")
+	rand.Seed(int64(0))
 
-	// fmt.Println(numSamples, len(train))
-	// for i, x := range train {
-	// 	fmt.Printf("train %d/%d\n", i+1, len(train))
-	// 	m.Learn([][][]float64{
-	// 		{x, []float64{0.1}},
-	// 	})
-	// }
+	p, err := plot.New()
+	if err != nil {
+		panic(err)
+	}
 
-	// ////////////////////
-	// go func() {
-	// 	var isWord bool
-	// 	for {
-	// 		f2, err := os.Open(*testFile)
-	// 		if err != nil {
-	// 			panic(fmt.Sprintf("couldn't open audio file - %v", err))
-	// 		}
-	// 		defer f2.Close()
-	//
-	// 		w2, err := dspwav.New(f2)
-	// 		if err != nil {
-	// 			panic(err)
-	// 		}
-	//
-	// 		sampleRate2 := 44100
-	//
-	// 		isWord = false
-	// 		for {
-	// 			samples2, err := w2.ReadSamples(sampleRate2 / 1000 * window)
-	// 			if err == io.EOF {
-	// 				break
-	// 			}
-	// 			if err != nil {
-	// 				break
-	// 			}
-	// 			s2 := parse(samples2)
-	//
-	// 			f2 := fft.FFTReal(s2)
-	// 			if len(f2) < 1024 {
-	// 				for i := len(f2); i < 1024; i++ {
-	// 					var c complex128
-	// 					f2 = append(f2, c)
-	// 				}
-	// 			}
-	//
-	// 			// lowPassFilter := 21
-	// 			// hiPassFilter := 20000
-	// 			// for i, c := range f2 {
-	// 			// 	if int(math.Abs(real(c))) < lowPassFilter {
-	// 			// 		f2[i] = 0
-	// 			// 	}
-	// 			// 	if int(math.Abs(real(c))) > hiPassFilter {
-	// 			// 		f2[i] = 0
-	// 			// 	}
-	// 			// }
-	// 			abs2 := make([]float64, len(f2))
-	// 			reals2 := make([]float64, len(f2))
-	// 			for i, x := range f2 {
-	// 				abs2[i] = cmplx.Abs(x)
-	// 				reals2[i] = real(x)
-	// 			}
-	// 			var avg float64
-	// 			var sum float64
-	// 			for _, x := range abs2 {
-	// 				sum = sum + x
-	// 			}
-	// 			avg = sum / float64(len(abs2))
-	// 			if avg > avgAmplitudeThreshold {
-	// 				if !isWord {
-	// 					isWord = true
-	// 					fmt.Println("word")
-	// 				}
-	// 			} else {
-	// 				isWord = false
-	// 			}
-	// 			if isWord {
-	// 				// we have to train network with f value
-	// 				// fmt.Println("OOOOOO", realsNormalizerd(reals))
-	// 				n2 := realsNormalizerd(reals2)
-	// 				fmt.Println(n2)
-	// 				fmt.Println("TEST", m.Predict([][]float64{n2}))
-	// 			}
-	//
-	// 		}
-	// 		time.Sleep(3 * time.Second)
-	//
-	// 	}
-	// }()
-	// // ////////////////////
-	// var isWord bool
-	// for {
-	// 	f3, err := os.Open(*wrongTestFile)
-	// 	if err != nil {
-	// 		panic(fmt.Sprintf("couldn't open audio file - %v", err))
-	// 	}
-	// 	defer f3.Close()
-	//
-	// 	w3, err := dspwav.New(f3)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	sampleRate3 := 44100
-	//
-	// 	isWord = false
-	// 	for {
-	// 		samples3, err := w3.ReadSamples(sampleRate3 / 1000 * window)
-	// 		if err == io.EOF {
-	// 			break
-	// 		}
-	// 		if err != nil {
-	// 			break
-	// 		}
-	//
-	// 		s3 := parse(samples3)
-	// 		f := fft.FFTReal(s3)
-	// 		if len(f) < 1024 {
-	// 			for i := len(f); i < 1024; i++ {
-	// 				var c complex128
-	// 				f = append(f, c)
-	// 			}
-	// 		}
-	// 		// lowPassFilter := 21
-	// 		// hiPassFilter := 20000
-	// 		// for i, c := range f {
-	// 		// 	if int(math.Abs(real(c))) < lowPassFilter {
-	// 		// 		f[i] = 0
-	// 		// 	}
-	// 		// 	if int(math.Abs(real(c))) > hiPassFilter {
-	// 		// 		f[i] = 0
-	// 		// 	}
-	// 		// }
-	// 		abs := make([]float64, len(f))
-	// 		reals := make([]float64, len(f))
-	// 		for i, x := range f {
-	// 			abs[i] = cmplx.Abs(x)
-	// 			reals[i] = real(x)
-	// 		}
-	// 		var avg float64
-	// 		var sum float64
-	// 		for _, x := range abs {
-	// 			sum = sum + x
-	// 		}
-	// 		avg = sum / float64(len(abs))
-	// 		if avg > avgAmplitudeThreshold {
-	// 			if !isWord {
-	// 				isWord = true
-	// 				fmt.Println("word")
-	// 			}
-	// 		} else {
-	// 			isWord = false
-	// 		}
-	// 		if isWord {
-	// 			// we have to train network with f value
-	// 			n3 := realsNormalizerd(reals)
-	// 			fmt.Println(n3)
-	// 			fmt.Println("WRONG", m.Predict([][]float64{n3}))
-	// 		}
-	//
-	// 	}
-	// 	time.Sleep(3 * time.Second)
-	//
-	// }
+	p.Title.Text = "Learning"
+	p.X.Label.Text = "samples"
+	p.Y.Label.Text = "signoid"
 
+	err = plotutil.AddLinePoints(p,
+		"Test file score", xys(testFileScore),
+		"Wrong file score", xys(wrongFileScore))
+	if err != nil {
+		panic(err)
+	}
+
+	// Save the plot to a PNG file.
+	if err := p.Save(4*vg.Inch, 10*vg.Inch, "points.png"); err != nil {
+		panic(err)
+	}
 }

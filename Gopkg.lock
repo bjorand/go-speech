@@ -2,6 +2,24 @@
 
 
 [[projects]]
+  branch = "default"
+  name = "bitbucket.org/zombiezen/gopdf"
+  packages = ["pdf"]
+  revision = "1c63dc69751bc45441c2ce1f56b631c55294b4d5"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/ajstarks/svgo"
+  packages = ["."]
+  revision = "644b8db467afccf19a0692a3e31a1868e4287ab8"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/golang/freetype"
+  packages = [".","raster","truetype"]
+  revision = "e2365dfdc4a05e4b8299a783240d4a7d5a65d4e4"
+
+[[projects]]
   branch = "master"
   name = "github.com/gonum/blas"
   packages = [".","blas64","native","native/internal/math32"]
@@ -39,6 +57,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/llgcode/draw2d"
+  packages = [".","draw2dbase","draw2dimg"]
+  revision = "274031cf2abe8acd15c4a911e1f7f1295fc4830c"
+
+[[projects]]
+  branch = "master"
   name = "github.com/mjibson/go-dsp"
   packages = ["dsputils","fft","wav"]
   revision = "49dba83727078f13a0e99553e0f8140990115ac9"
@@ -61,9 +85,27 @@
   packages = ["."]
   revision = "b63a9887d320becede259f24ba8ba7b2459659da"
 
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/image"
+  packages = ["draw","font","math/f64","math/fixed","tiff","tiff/lzw"]
+  revision = "12117c17ca67ffa1ce22e9409f3b0b0a93ac08c7"
+
+[[projects]]
+  branch = "master"
+  name = "gonum.org/v1/gonum"
+  packages = ["blas","blas/blas64","blas/gonum","floats","internal/asm/c128","internal/asm/f32","internal/asm/f64","internal/math32","lapack","lapack/gonum","lapack/lapack64","mat"]
+  revision = "385a0bf6b2e910f84d4e42aacdc84b54b689e1ee"
+
+[[projects]]
+  branch = "master"
+  name = "gonum.org/v1/plot"
+  packages = [".","palette","plotter","plotutil","tools/bezier","vg","vg/draw","vg/fonts","vg/vgeps","vg/vgimg","vg/vgpdf","vg/vgsvg"]
+  revision = "d7ef6b5636d553c3ceddc13efb0537027cc6e09e"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7080c475cc9d5f185b403579c242560d70a93b86c4914e6670a2775cd3c71c65"
+  inputs-digest = "db3852043d263bf19ac1f05aed3547255e65ff89aec9566e9945aae05e2b3612"
   solver-name = "gps-cdcl"
   solver-version = 1

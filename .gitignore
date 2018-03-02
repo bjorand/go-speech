@@ -2,3 +2,4 @@ vendor/
 *.bin
 *.wav
 docs/jupyter-notebooks/env/
+*.png
